@@ -50,9 +50,7 @@ async function seed() {
     console.log("✅ Seeding completed successfully");
   } catch (err) {
     console.error("❌ Error during seeding:", err);
-  } finally {
-    await db.end();
   }
 }
 
-seed();
+export default seed;
