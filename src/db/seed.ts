@@ -16,6 +16,7 @@ async function seed() {
         email VARCHAR(255) UNIQUE NOT NULL,
         password_hash VARCHAR(255) NOT NULL,
         role VARCHAR(50) DEFAULT 'user' CHECK (role IN ('user','staff','admin')),
+        verified BOOLEAN DEFAULT false,
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
       );
@@ -27,6 +28,8 @@ async function seed() {
         id SERIAL PRIMARY KEY,
         user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
         token VARCHAR(500) NOT NULL,
+        type VARCHAR(50) DEFAULT 'refresh',
+        used BOOLEAN DEFAULT false,
         created_at TIMESTAMP DEFAULT NOW(),
         expires_at TIMESTAMP
       );
@@ -38,11 +41,11 @@ async function seed() {
     // Insert test users
     await db.query(
       `
-      INSERT INTO users (email, password_hash, role)
+      INSERT INTO users (email, password_hash, role, verified)
       VALUES
-        ('admin@memberspace.dev', $1, 'admin'),
-        ('staff@memberspace.dev', $1, 'staff'),
-        ('user@memberspace.dev', $1, 'user');
+        ('admin@memberspace.dev', $1, 'admin', true),
+        ('staff@memberspace.dev', $1, 'staff', true),
+        ('user@memberspace.dev', $1, 'user', true);
     `,
       [password]
     );
