@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { AuthRequest } from '../types';
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import db from "../config/db";
@@ -99,11 +100,14 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
   }
 };
 
-export const logout = async (req: Request, res: Response, next: NextFunction) => {
+export const logout = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  if (!req.user) {
+    return res.status(401).json({ valid: false, message: "Unauthorised" });
+  }
     try {
-        const refreshTokenFromCookie = req.cookies.refresh_token
-        if(refreshTokenFromCookie) {
-        await db.query("DELETE FROM tokens WHERE token = $1", [refreshTokenFromCookie]);
+        const user_id = req.user.id
+        if(user_id) {
+        await db.query("DELETE FROM tokens WHERE user_id = $1 AND type = 'refresh'", [user_id]);
         }
         res
         .clearCookie("access_token")
@@ -116,25 +120,15 @@ export const logout = async (req: Request, res: Response, next: NextFunction) =>
       }
 };
 
-export const verify = async (req: Request, res: Response, next: NextFunction) => {
-    const token = req.cookies.access_token
-        if (!token) {
-            return res.status(401).json({ valid: false, message: "No refresh token found" });
-          }
-    try {
-        const decoded = jwt.verify(token, JWT_SECRET)
-
-        res.status(200).json({
-            valid: true,
-            user: { id: (decoded as any).id, email: (decoded as any).email, role: (decoded as any).role }
-          });
-    } catch (err: any) {
-      if (err.name === "TokenExpiredError" || err.name === "JsonWebTokenError") {
-        return res.status(401).json({ valid: false, message: "Invalid or expired token" });
-      }
-      console.error(err);
-      res.status(500).json({ message: "Server error" });
+export const verify = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return res.status(401).json({ valid: false, message: "Unauthorised" });
     }
+  
+    res.status(200).json({
+      valid: true,
+      user: req.user,
+    });
 };
 
 export const refresh = async (req: Request, res: Response, next: NextFunction) => {
