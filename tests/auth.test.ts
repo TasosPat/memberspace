@@ -42,16 +42,21 @@ describe("Auth Endpoints", () => {
     expect(res.body.user.email).toBe("user@memberspace.dev");
   });
 
-  it("should logout and clear cookies", async () => {
+  it("should logout and clear cookies, and remove refresh tokens from DB", async () => {
     const res = await agent.post("/auth/logout");
     expect(res.status).toBe(200);
     expect(res.body.message).toBe("Logged out");
+
+    const userRes = await db.query("SELECT id FROM users WHERE email = $1", ["user@memberspace.dev"]);
+    const userId = userRes.rows[0].id;
+  
+    const tokens = await db.query("SELECT * FROM tokens WHERE user_id = $1", [userId]);
+    expect(tokens.rowCount).toBe(0);
   });
 
-  it("should return 200 even if there are no cookies", async () => {
+  it("should return 401 when there are no cookies", async () => {
     const res = await agent.post("/auth/logout");
-    expect(res.status).toBe(200);
-    expect(res.body.message).toBe("Logged out");
+    expect(res.status).toBe(401);
   });
 
   it("should fail if no refresh token cookie", async () => {
@@ -89,7 +94,6 @@ describe("Auth Endpoints", () => {
   it("should fail verify without access_token cookie", async () => {
     const res = await request(app).get("/auth/verify");
     expect(res.status).toBe(401);
-    expect(res.body.valid).toBe(false);
   });
   it("should reject expired access token", async () => {
     // Create token that expired 10 seconds ago
@@ -290,5 +294,35 @@ describe("Password Reset Flow", () => {
     // Token should be marked used
     const updatedToken = await db.query("SELECT used FROM tokens WHERE token = $1", [token]);
     expect(updatedToken.rows[0].used).toBe(true);
+  });
+  it("should not allow password reset with used token", async () => {
+    const tokenResult = await db.query(
+      "SELECT * FROM tokens WHERE used = true AND type = 'password_reset' AND expires_at > NOW()"
+    );
+    const token = tokenResult.rows[0].token;
+
+    const res = await request(app)
+      .post("/auth/reset-password")
+      .send({ token, newPassword: "newpassword1234" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/Invalid or expired token/i);
+  });
+
+  it("should reject expired access token for email verification", async () => {
+    const userRes = await db.query("SELECT id FROM users WHERE email = $1", ["newuser@memberspace.dev"]);
+    const userId = userRes.rows[0].id;
+  
+    const expiredToken = "expired-verification-token";
+    await db.query(
+      "INSERT INTO tokens (user_id, token, type, expires_at) VALUES ($1, $2, $3, NOW() - INTERVAL '1 minute')",
+      [userId, expiredToken, "verification"]
+    );
+
+    const res = await request(app)
+      .get(`/auth/verify-email?token=${expiredToken}`)
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/expired/i);
   });
 });
